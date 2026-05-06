@@ -1,11 +1,65 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useClusterStore } from '@/stores/cluster'
 import { useMigrationStore } from '@/stores/migration'
+import { api } from '@/composables/useApi'
+import { useToastStore } from '@/stores/toasts'
+import type { BundleAnalysisProgress } from '@/types'
 
 const router = useRouter()
 const clusterStore = useClusterStore()
 const migrationStore = useMigrationStore()
+const toastStore = useToastStore()
+
+const analyzing = ref(false)
+const analysisJobId = ref<string | null>(null)
+const progress = ref<BundleAnalysisProgress | null>(null)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function startAnalysis(): Promise<void> {
+  analyzing.value = true
+  progress.value = null
+  try {
+    const { jobId } = await api.startBundleAnalysis()
+    analysisJobId.value = jobId
+    pollTimer = setInterval(async () => {
+      try {
+        progress.value = await api.getBundleAnalysisStatus(jobId)
+        if (progress.value.status === 'completed' || progress.value.status === 'failed') {
+          clearInterval(pollTimer!)
+          analyzing.value = false
+          if (progress.value.status === 'completed') {
+            const result = await api.getBundleResult(jobId)
+            const bundles = result.bundles
+            const allResources = bundles.flatMap(b => b.resources)
+            clusterStore.setResources(allResources.map(r => ({
+              kind: r.kind,
+              name: r.name,
+              namespace: r.namespace,
+              apiVersion: '',
+              raw: '',
+              labels: {},
+              annotations: {},
+            })))
+            for (let i = 0; i < clusterStore.resources.length; i++) {
+              (clusterStore.resources[i] as unknown as Record<string, boolean>)._selected = true
+            }
+            toastStore.addToast(`AI analysis complete: ${bundles.length} bundles created`, 'info')
+            router.push('/bundles')
+          }
+        }
+      } catch {
+        clearInterval(pollTimer!)
+        analyzing.value = false
+        progress.value = null
+      }
+    }, 2000)
+  } catch {
+    analyzing.value = false
+    toastStore.addToast('Failed to start bundle analysis', 'error')
+  }
+}
 
 function navigateToSetup() { router.push('/setup') }
 function navigateToResources() { router.push('/resources') }
@@ -80,6 +134,25 @@ function viewLastReport() {
           >
             Discover Resources
           </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="border border-indigo-800/50 rounded-lg p-5 bg-indigo-900/10">
+          <h2 class="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-3">AI Bundle Analysis</h2>
+          <p class="text-xs text-gray-400 mb-4">Use AI to intelligently group resources into migration bundles based on naming conventions, label patterns, and resource relationships.</p>
+          <button @click="startAnalysis" :disabled="analyzing" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 rounded-lg text-sm font-semibold transition-colors">
+            {{ analyzing ? 'Analyzing...' : 'Analyze Bundles' }}
+          </button>
+          <div v-if="analyzing && progress" class="mt-4">
+            <div class="flex items-center gap-2 mb-2">
+              <div class="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div class="h-full bg-indigo-500 rounded-full transition-all duration-500" :style="{ width: progress.pct + '%' }" />
+              </div>
+              <span class="text-xs text-gray-400">{{ progress.pct }}%</span>
+            </div>
+            <p class="text-xs text-gray-500">{{ progress.phase }}: {{ progress.detail }}</p>
+          </div>
         </div>
       </div>
     </div>

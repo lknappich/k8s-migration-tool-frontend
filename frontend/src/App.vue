@@ -1,11 +1,51 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useClusterStore } from '@/stores/cluster'
+import { api } from '@/composables/useApi'
 import ToastContainer from '@/components/ToastContainer.vue'
+import type { OllamaStatus } from '@/types'
 
 const route = useRoute()
 const clusterStore = useClusterStore()
+
+const aiStatus = ref<OllamaStatus | null>(null)
+const showAiPopover = ref(false)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function fetchAiStatus(): Promise<void> {
+  try {
+    aiStatus.value = await api.getOllamaStatus()
+  } catch {
+    if (!aiStatus.value) {
+      aiStatus.value = { mode: 'local', baseUrl: '', model: '', connected: false, error: 'unreachable', modelsAvailable: [] }
+    } else {
+      aiStatus.value.connected = false
+      aiStatus.value.error = 'poll-failed'
+    }
+  }
+}
+
+async function testConnection(): Promise<void> {
+  try {
+    await api.getOllamaStatus()
+    aiStatus.value = await api.getOllamaStatus()
+  } catch {
+    if (aiStatus.value) {
+      aiStatus.value.connected = false
+      aiStatus.value.error = 'Connection failed'
+    }
+  }
+}
+
+onMounted(() => {
+  fetchAiStatus()
+  pollTimer = setInterval(fetchAiStatus, 30000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 function isActive(path: string): boolean {
   return route.path.startsWith(path)
@@ -63,6 +103,30 @@ const inactiveClasses = 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
             <span class="w-2 h-2 rounded-full bg-gray-600" />
             <span class="text-gray-500">Not configured</span>
           </span>
+          <div v-if="aiStatus" class="flex items-center gap-2 cursor-pointer relative" @click="showAiPopover = !showAiPopover">
+            <span class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+              :class="aiStatus.connected ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/20' : 'bg-amber-400/10 text-amber-400 border border-amber-400/20'">
+              <span class="w-1.5 h-1.5 rounded-full" :class="aiStatus.connected ? 'bg-emerald-400' : 'bg-amber-400'" />
+              AI {{ aiStatus.connected ? 'Ready' : 'Degraded' }}
+            </span>
+            <div v-if="showAiPopover" class="absolute top-full right-0 mt-2 w-72 bg-gray-900 border border-gray-700 rounded-xl p-4 shadow-2xl z-50" @click.stop>
+              <h4 class="text-xs font-semibold text-gray-200 uppercase tracking-wider mb-3">AI Connection</h4>
+              <div class="space-y-2 text-xs text-gray-400">
+                <div><span class="text-gray-500">Status:</span> <span :class="aiStatus.connected ? 'text-emerald-400' : 'text-amber-400'">{{ aiStatus.connected ? 'Connected' : 'Disconnected' }}</span></div>
+                <div><span class="text-gray-500">Mode:</span> <span class="text-gray-300">{{ aiStatus.mode }}</span></div>
+                <div><span class="text-gray-500">Model:</span> <span class="text-gray-300">{{ aiStatus.model || 'N/A' }}</span></div>
+                <div><span class="text-gray-500">URL:</span> <span class="text-gray-300 font-mono break-all">{{ aiStatus.baseUrl || 'N/A' }}</span></div>
+                <div v-if="aiStatus.modelsAvailable.length > 0">
+                  <span class="text-gray-500">Available Models:</span>
+                  <span class="text-gray-300">{{ aiStatus.modelsAvailable.join(', ') }}</span>
+                </div>
+                <div v-if="aiStatus.error" class="text-red-400 mt-1">{{ aiStatus.error }}</div>
+              </div>
+              <button @click="testConnection" class="mt-3 w-full px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors">
+                Test Connection
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

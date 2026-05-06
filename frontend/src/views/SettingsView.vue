@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useSettingsStore } from '@/stores/settings'
 import { useToastStore } from '@/stores/toasts'
+import { api } from '@/composables/useApi'
 import type { ConflictStrategy } from '@/types'
 
 const clusterStore = useClusterStore()
@@ -13,6 +14,32 @@ const newRegKey = ref('')
 const newRegVal = ref('')
 const newNsKey = ref('')
 const newNsVal = ref('')
+
+const availableModels = ref<string[]>([])
+const testingConnection = ref(false)
+
+async function fetchModels(): Promise<void> {
+  try {
+    availableModels.value = await api.getOllamaModels()
+  } catch {
+    availableModels.value = []
+  }
+}
+
+async function testConnection(): Promise<void> {
+  testingConnection.value = true
+  try {
+    await api.getOllamaStatus()
+    toastStore.addToast('Ollama connection successful', 'info')
+  } catch {
+    toastStore.addToast('Ollama connection failed', 'error')
+  }
+  testingConnection.value = false
+}
+
+onMounted(() => {
+  fetchModels()
+})
 
 function addRegistryRewrite(): void {
   const key = newRegKey.value.trim()
@@ -171,6 +198,111 @@ function disconnectClusters(): void {
         <input v-model="newNsKey" placeholder="Old namespace" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none flex-1" />
         <input v-model="newNsVal" placeholder="New namespace" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none flex-1" />
         <button @click="addNamespaceRemap" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors">Add</button>
+      </div>
+    </section>
+
+    <section class="border border-gray-800 rounded-lg p-5 bg-gray-900">
+      <h2 class="text-sm font-semibold text-gray-200 mb-1">AI Bundle Analysis</h2>
+      <p class="text-xs text-gray-500 mb-4">Configure AI-powered bundling via Ollama</p>
+
+      <div class="space-y-5">
+        <div>
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Ollama Connection</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">Mode</label>
+              <div class="flex gap-2">
+                <button
+                  @click="settingsStore.ollamaMode = 'local'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  :class="settingsStore.ollamaMode === 'local' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                >Local</button>
+                <button
+                  @click="settingsStore.ollamaMode = 'cloud'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  :class="settingsStore.ollamaMode === 'cloud' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                >Cloud</button>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">{{ settingsStore.ollamaMode === 'local' ? 'Local URL' : 'Cloud URL' }}</label>
+              <input v-if="settingsStore.ollamaMode === 'local'" v-model="settingsStore.ollamaLocalUrl" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none" placeholder="http://localhost:11434" />
+              <input v-else v-model="settingsStore.ollamaCloudUrl" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none" placeholder="https://ollama.example.com" />
+            </div>
+            <div v-if="settingsStore.ollamaMode === 'cloud'">
+              <label class="text-xs text-gray-400 block mb-1">API Key</label>
+              <input v-model="settingsStore.ollamaApiKey" type="password" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none" placeholder="Enter API key" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">Model</label>
+              <select v-model="settingsStore.ollamaModel" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:border-indigo-500 focus:outline-none">
+                <option value="">Auto-detect</option>
+                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+            <div class="flex gap-3">
+              <button
+                @click="testConnection"
+                :disabled="testingConnection"
+                class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors"
+              >
+                {{ testingConnection ? 'Testing...' : 'Test Connection' }}
+              </button>
+              <button
+                @click="fetchModels"
+                class="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs transition-colors"
+              >
+                Refresh Models
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-800 pt-5">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Bundle Analysis Settings</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">Batch Size</label>
+              <input v-model.number="settingsStore.batchSize" type="number" min="1" max="100" class="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <label class="flex items-center justify-between py-2">
+              <div>
+                <span class="text-sm text-gray-200">Auto-Analyze</span>
+                <p class="text-xs text-gray-500">Automatically run bundle analysis after resource discovery</p>
+              </div>
+              <input v-model="settingsStore.autoAnalyze" type="checkbox" class="rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-600 scale-125" />
+            </label>
+            <label class="flex items-center justify-between py-2 border-t border-gray-800">
+              <div>
+                <span class="text-sm text-gray-200">Show AI Reasoning</span>
+                <p class="text-xs text-gray-500">Display AI-generated rationale alongside bundle suggestions</p>
+              </div>
+              <input v-model="settingsStore.showAIReasoning" type="checkbox" class="rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-600 scale-125" />
+            </label>
+            <label class="flex items-center justify-between py-2 border-t border-gray-800">
+              <div>
+                <span class="text-sm text-gray-200">Show Confidence Scores</span>
+                <p class="text-xs text-gray-500">Display confidence breakdowns for bundle groupings and dependencies</p>
+              </div>
+              <input v-model="settingsStore.showConfidence" type="checkbox" class="rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-600 scale-125" />
+            </label>
+            <label class="flex items-center justify-between py-2 border-t border-gray-800">
+              <div>
+                <span class="text-sm text-gray-200">Fallback to Static Analysis</span>
+                <p class="text-xs text-gray-500">Use traditional pattern-based bundling when AI service is unreachable</p>
+              </div>
+              <input v-model="settingsStore.fallbackStatic" type="checkbox" class="rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-600 scale-125" />
+            </label>
+            <div class="border-t border-gray-800 pt-4">
+              <label class="text-xs text-gray-400 block mb-1">Minimum Confidence Threshold</label>
+              <select v-model="settingsStore.confidenceThreshold" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:border-indigo-500 focus:outline-none w-48">
+                <option value="high">High (strict)</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low (permissive)</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

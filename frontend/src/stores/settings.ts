@@ -11,6 +11,16 @@ interface StoredSettings {
   blockUnresolved: boolean
   registryRewrite: Record<string, string>
   namespaceRemap: Record<string, string>
+  ollamaMode: 'local' | 'cloud'
+  ollamaLocalUrl: string
+  ollamaCloudUrl: string
+  ollamaModel: string
+  batchSize: number
+  autoAnalyze: boolean
+  showAIReasoning: boolean
+  showConfidence: boolean
+  fallbackStatic: boolean
+  confidenceThreshold: 'low' | 'medium' | 'high'
 }
 
 function loadSettings(): StoredSettings {
@@ -25,6 +35,16 @@ function loadSettings(): StoredSettings {
     blockUnresolved: false,
     registryRewrite: {},
     namespaceRemap: {},
+    ollamaMode: 'local',
+    ollamaLocalUrl: 'http://localhost:11434',
+    ollamaCloudUrl: '',
+    ollamaModel: '',
+    batchSize: 10,
+    autoAnalyze: false,
+    showAIReasoning: true,
+    showConfidence: true,
+    fallbackStatic: true,
+    confidenceThreshold: 'medium',
   }
 }
 
@@ -44,8 +64,22 @@ export const useSettingsStore = defineStore('settings', () => {
   const registryRewrite = ref<Record<string, string>>(loaded.registryRewrite)
   const namespaceRemap = ref<Record<string, string>>(loaded.namespaceRemap)
 
+  const ollamaMode = ref<'local' | 'cloud'>(loaded.ollamaMode)
+  const ollamaLocalUrl = ref(loaded.ollamaLocalUrl)
+  const ollamaCloudUrl = ref(loaded.ollamaCloudUrl)
+  const ollamaApiKey = ref('')
+  const ollamaModel = ref(loaded.ollamaModel)
+  const batchSize = ref(loaded.batchSize)
+  const autoAnalyze = ref(loaded.autoAnalyze)
+  const showAIReasoning = ref(loaded.showAIReasoning)
+  const showConfidence = ref(loaded.showConfidence)
+  const fallbackStatic = ref(loaded.fallbackStatic)
+  const confidenceThreshold = ref<'low' | 'medium' | 'high'>(loaded.confidenceThreshold)
+
   watch(
-    [defaultConflict, autoAddDeps, warnExternal, blockUnresolved, registryRewrite, namespaceRemap],
+    [defaultConflict, autoAddDeps, warnExternal, blockUnresolved, registryRewrite, namespaceRemap,
+     ollamaMode, ollamaLocalUrl, ollamaCloudUrl, ollamaModel,
+     batchSize, autoAnalyze, showAIReasoning, showConfidence, fallbackStatic, confidenceThreshold],
     () => {
       persist({
         defaultConflict: defaultConflict.value,
@@ -54,6 +88,16 @@ export const useSettingsStore = defineStore('settings', () => {
         blockUnresolved: blockUnresolved.value,
         registryRewrite: { ...registryRewrite.value },
         namespaceRemap: { ...namespaceRemap.value },
+        ollamaMode: ollamaMode.value,
+        ollamaLocalUrl: ollamaLocalUrl.value,
+        ollamaCloudUrl: ollamaCloudUrl.value,
+        ollamaModel: ollamaModel.value,
+        batchSize: batchSize.value,
+        autoAnalyze: autoAnalyze.value,
+        showAIReasoning: showAIReasoning.value,
+        showConfidence: showConfidence.value,
+        fallbackStatic: fallbackStatic.value,
+        confidenceThreshold: confidenceThreshold.value,
       })
     },
     { deep: true },
@@ -90,5 +134,16 @@ export const useSettingsStore = defineStore('settings', () => {
     removeRegistryRewrite,
     setNamespaceRemap,
     removeNamespaceRemap,
+    ollamaMode,
+    ollamaLocalUrl,
+    ollamaCloudUrl,
+    ollamaApiKey,
+    ollamaModel,
+    batchSize,
+    autoAnalyze,
+    showAIReasoning,
+    showConfidence,
+    fallbackStatic,
+    confidenceThreshold,
   }
 })

@@ -1,6 +1,7 @@
 import type {
   ClusterInfo, DiscoveredResource, ResourceGroupSummary, BundleAnalysis, Bundle,
   PreflightCheck, ResourceSelection, BundleMigrationRequest,
+  OllamaStatus, BundleAnalysisProgress, BundleFeedback,
 } from '@/types'
 
 const BASE = '/api'
@@ -83,5 +84,26 @@ export const api = {
   },
   getMigrationHistory(): Promise<unknown[]> {
     return request<unknown[]>('GET', '/migrate')
+  },
+  getOllamaStatus(): Promise<OllamaStatus> {
+    return request<OllamaStatus>('GET', '/ai/ollama/status')
+  },
+  getOllamaModels(): Promise<string[]> {
+    return request<string[]>('GET', '/ai/ollama/models')
+  },
+  startBundleAnalysis(config?: { batchSize?: number; model?: string; namespaceFilter?: string[] }): Promise<{ jobId: string }> {
+    return request<{ jobId: string }>('POST', '/ai/bundles/analyze', config || {})
+  },
+  getBundleAnalysisStatus(jobId: string): Promise<BundleAnalysisProgress> {
+    return request<BundleAnalysisProgress>('GET', `/ai/bundles/analyze/${jobId}`)
+  },
+  getBundleResult(jobId: string): Promise<BundleAnalysis> {
+    return request<BundleAnalysis>('GET', `/ai/bundles/result/${jobId}`)
+  },
+  reanalyzeBundle(bundleName: string): Promise<{ jobId: string }> {
+    return request<{ jobId: string }>('POST', `/ai/bundles/reanalyze/${encodeURIComponent(bundleName)}`)
+  },
+  sendBundleFeedback(feedback: BundleFeedback): Promise<void> {
+    return request<void>('POST', '/ai/bundles/feedback', feedback)
   },
 }

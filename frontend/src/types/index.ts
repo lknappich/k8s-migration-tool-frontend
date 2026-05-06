@@ -98,6 +98,7 @@ export interface Dependency {
   required: boolean
   description: string
   migratable: boolean
+  confidence?: 'high' | 'medium' | 'low'
 }
 
 export interface Bundle {
@@ -111,6 +112,8 @@ export interface Bundle {
   externalDependencies: Dependency[]
   warnings: string[]
   status: string
+  reasoning?: string
+  confidenceBreakdown?: { high: number; medium: number; low: number }
 }
 
 export interface BundleAnalysis {
@@ -168,4 +171,30 @@ export interface DiffResource extends DiscoveredResource {
   _selected: boolean
   diffStatus?: 'sourceOnly' | 'targetOnly' | 'drift' | 'match'
   bundleBundle?: string
+}
+
+export interface OllamaStatus {
+  mode: 'local' | 'cloud'
+  baseUrl: string
+  model: string
+  connected: boolean
+  error?: string
+  modelsAvailable: string[]
+}
+
+export interface BundleAnalysisProgress {
+  jobId: string
+  phase: string
+  detail: string
+  pct: number
+  status: 'running' | 'completed' | 'failed'
+  bundleCount?: number
+  ungroupedCount?: number
+  warningCount?: number
+}
+
+export interface BundleFeedback {
+  bundleName: string
+  action: 'merge' | 'split' | 'add_resource' | 'remove_resource'
+  details: Record<string, any>
 }
