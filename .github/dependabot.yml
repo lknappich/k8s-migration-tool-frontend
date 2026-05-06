@@ -1,0 +1,69 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    target-branch: "develop"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "go"
+    assignees:
+      - "BackendAgent"
+    reviewers:
+      - "K8sAgent"
+
+  - package-ecosystem: "gomod"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "go"
+    assignees:
+      - "BackendAgent"
+    reviewers:
+      - "K8sAgent"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    target-branch: "develop"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    assignees:
+      - "FrontendAgent"
+    reviewers:
+      - "TestAgent"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    assignees:
+      - "FrontendAgent"
+    reviewers:
+      - "TestAgent"

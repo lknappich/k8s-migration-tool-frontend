@@ -1,0 +1,881 @@
+openapi: "3.0.3"
+info:
+  title: K8s Migration API
+  description: API for cross-cluster Kubernetes resource migration with bundle-aware dependency resolution.
+  version: "0.1.0"
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /api/healthz:
+    get:
+      tags: [System]
+      summary: Health check
+      operationId: healthz
+      responses:
+        "200":
+          description: Server is healthy and configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, ok]
+                  source:
+                    type: string
+                    enum: [ok, unreachable]
+                  target:
+                    type: string
+                    enum: [ok, unreachable]
+                  configured:
+                    type: boolean
+        "503":
+          description: Server configured but clusters degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDegraded"
+
+  /api/config:
+    post:
+      tags: [Configuration]
+      summary: Configure source and target cluster kubeconfigs
+      operationId: configureClusters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigRequest"
+      responses:
+        "200":
+          description: Clusters configured successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+        "400":
+          description: Invalid kubeconfig or unreachable cluster
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/resources:
+    get:
+      tags: [Resources]
+      summary: Discover all migratable resources from source cluster
+      operationId: getResources
+      responses:
+        "200":
+          description: List of discovered resources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveredResource"
+        "400":
+          description: Clusters not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/groups:
+    get:
+      tags: [Groups]
+      summary: Build resource groups from discovered resources
+      operationId: getGroups
+      responses:
+        "200":
+          description: List of resource groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceGroup"
+        "400":
+          description: Clusters not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/bundles:
+    get:
+      tags: [Bundles]
+      summary: Get bundle analysis for all resources or selected resources
+      operationId: getBundles
+      parameters:
+        - name: selected
+          in: query
+          schema:
+            type: string
+          description: Comma-separated selections as kind:name:namespace
+      responses:
+        "200":
+          description: Bundle analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleAnalysis"
+
+  /api/bundles/resolve:
+    post:
+      tags: [Bundles]
+      summary: Resolve bundles from a set of resource selections
+      operationId: resolveBundles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ResourceSelection"
+      responses:
+        "200":
+          description: Bundle analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleAnalysis"
+
+  /api/bundles/{id}:
+    get:
+      tags: [Bundles]
+      summary: Get a specific bundle by ID
+      operationId: getBundle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bundle detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bundle"
+        "404":
+          description: Bundle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/migrate:
+    post:
+      tags: [Migration]
+      summary: Start a single-plan migration
+      operationId: startMigration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MigrateRequest"
+      responses:
+        "202":
+          description: Migration job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationJobAccepted"
+        "400":
+          description: Invalid plan or no resources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/migrate/batch:
+    post:
+      tags: [Migration]
+      summary: Start a batch migration from resource groups
+      operationId: startBatchMigration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchMigrationPlan"
+      responses:
+        "202":
+          description: Batch migration accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationJobAccepted"
+
+  /api/migrate/bundles:
+    post:
+      tags: [Migration]
+      summary: Start a bundle-based migration
+      operationId: startBundleMigration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BundleMigrationRequest"
+      responses:
+        "202":
+          description: Bundle migration accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationJobAccepted"
+
+  /api/migrate/{id}:
+    get:
+      tags: [Migration]
+      summary: Get migration job status
+      operationId: getMigrationStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Migration job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationJob"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+    delete:
+      tags: [Migration]
+      summary: Cancel a migration job
+      operationId: cancelMigration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Migration cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: cancelled
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/migrate/{id}/live:
+    get:
+      tags: [Migration]
+      summary: WebSocket stream for live migration events
+      description: Upgrades to WebSocket and streams NDJSON events as the migration progresses.
+      operationId: migrateLive
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "101":
+          description: WebSocket upgrade
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /api/migrate/{id}/report:
+    get:
+      tags: [Migration]
+      summary: Download migration report
+      operationId: getMigrationReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, yaml]
+            default: json
+      responses:
+        "200":
+          description: Migration report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationReport"
+            application/x-yaml:
+              schema:
+                type: string
+
+  /api/preflight:
+    get:
+      tags: [Preflight]
+      summary: Run preflight checks
+      operationId: runPreflight
+      responses:
+        "200":
+          description: Preflight check results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PreflightCheck"
+
+  /api/preflight/{jobId}:
+    get:
+      tags: [Preflight]
+      summary: Get preflight results for a specific job
+      operationId: getPreflightJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Preflight check results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PreflightCheck"
+
+  /api/verify/{jobId}:
+    get:
+      tags: [Verification]
+      summary: Verify a completed migration job
+      operationId: verifyJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResult"
+
+components:
+  schemas:
+    APIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+
+    ConflictStrategy:
+      type: string
+      enum: [skip, overwrite, rename]
+
+    ResourceKind:
+      type: string
+      enum:
+        - Namespace
+        - ServiceAccount
+        - Role
+        - RoleBinding
+        - ClusterRole
+        - ClusterRoleBinding
+        - ConfigMap
+        - Secret
+        - PersistentVolume
+        - PersistentVolumeClaim
+        - Deployment
+        - StatefulSet
+        - DaemonSet
+        - Job
+        - CronJob
+        - Service
+        - Ingress
+        - NetworkPolicy
+        - CustomResourceDefinition
+        - CustomResource
+        - HelmRelease
+
+    HealthDegraded:
+      type: object
+      properties:
+        status:
+          type: string
+          example: degraded
+        source:
+          type: string
+          example: unreachable
+        target:
+          type: string
+          example: ok
+
+    ConfigRequest:
+      type: object
+      required: [sourceKubeconfig, targetKubeconfig]
+      properties:
+        sourceKubeconfig:
+          type: string
+          description: YAML content of the source cluster kubeconfig
+        targetKubeconfig:
+          type: string
+          description: YAML content of the target cluster kubeconfig
+        insecureSkipVerify:
+          type: boolean
+          default: false
+
+    ConfigResponse:
+      type: object
+      properties:
+        source:
+          $ref: "#/components/schemas/ClusterInfo"
+        target:
+          $ref: "#/components/schemas/ClusterInfo"
+        sourceServer:
+          type: string
+        targetServer:
+          type: string
+        sourceContext:
+          type: string
+        targetContext:
+          type: string
+
+    ClusterInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        nodeCount:
+          type: integer
+
+    DiscoveredResource:
+      type: object
+      required: [kind, name, apiVersion, raw]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
+        name:
+          type: string
+        namespace:
+          type: string
+        apiVersion:
+          type: string
+        raw:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+
+    ResourceSelection:
+      type: object
+      required: [kind, name, conflict]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
+        name:
+          type: string
+        namespace:
+          type: string
+        targetNamespace:
+          type: string
+        conflict:
+          $ref: "#/components/schemas/ConflictStrategy"
+        batchId:
+          type: string
+
+    MigrationPlan:
+      type: object
+      required: [resources]
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceSelection"
+        defaultConflict:
+          $ref: "#/components/schemas/ConflictStrategy"
+        imageRegistryRewrite:
+          type: object
+          additionalProperties:
+            type: string
+        dryRun:
+          type: boolean
+
+    MigrateRequest:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          $ref: "#/components/schemas/MigrationPlan"
+
+    MigrationProgress:
+      type: object
+      properties:
+        total:
+          type: integer
+        completed:
+          type: integer
+        success:
+          type: integer
+        skipped:
+          type: integer
+        failed:
+          type: integer
+
+    ResourceResult:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
+        name:
+          type: string
+        namespace:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        batchName:
+          type: string
+        batchId:
+          type: string
+
+    MigrationJobAccepted:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+        total:
+          type: integer
+
+    MigrationJob:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, cancelled, failed]
+        plan:
+          $ref: "#/components/schemas/MigrationPlan"
+        createdAt:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceResult"
+        progress:
+          $ref: "#/components/schemas/MigrationProgress"
+        batches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchProgress"
+
+    MigrationReport:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+        progress:
+          $ref: "#/components/schemas/MigrationProgress"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceResult"
+        plan:
+          $ref: "#/components/schemas/MigrationPlan"
+
+    ResourceGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        namespace:
+          type: string
+        appLabel:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveredResource"
+        resourceCount:
+          type: integer
+
+    GroupSelection:
+      type: object
+      properties:
+        groupId:
+          type: string
+        resolution:
+          $ref: "#/components/schemas/ConflictStrategy"
+
+    BatchConfig:
+      type: object
+      properties:
+        namespaceRemapping:
+          type: object
+          additionalProperties:
+            type: string
+        imageRegistryRewrite:
+          type: object
+          additionalProperties:
+            type: string
+
+    BatchProgress:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        completed:
+          type: integer
+        success:
+          type: integer
+        skipped:
+          type: integer
+        failed:
+          type: integer
+
+    BatchMigrationPlan:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupSelection"
+        batches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchConfig"
+        defaultConflict:
+          $ref: "#/components/schemas/ConflictStrategy"
+        dryRun:
+          type: boolean
+
+    Bundle:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        primaryResource:
+          type: string
+        primaryKind:
+          $ref: "#/components/schemas/ResourceKind"
+        namespace:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceSelection"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dependency"
+        externalDependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dependency"
+        warnings:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+
+    Dependency:
+      type: object
+      properties:
+        resourceKind:
+          $ref: "#/components/schemas/ResourceKind"
+        name:
+          type: string
+        namespace:
+          type: string
+        type:
+          type: string
+          enum:
+            - volume
+            - configmap
+            - secret
+            - serviceAccount
+            - service
+            - ingress
+            - crd
+            - storageClass
+            - ingressClass
+            - hpa
+            - pdb
+            - networkPolicy
+            - imagePullSecret
+            - rbac
+            - tlsSecret
+        required:
+          type: boolean
+        description:
+          type: string
+        migratable:
+          type: boolean
+
+    BundleAnalysis:
+      type: object
+      properties:
+        bundles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Bundle"
+        missingDependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dependency"
+        warnings:
+          type: array
+          items:
+            type: string
+
+    BundleSelection:
+      type: object
+      properties:
+        bundleId:
+          type: string
+        includeOptional:
+          type: boolean
+        conflict:
+          $ref: "#/components/schemas/ConflictStrategy"
+
+    BundleMigrationRequest:
+      type: object
+      required: [bundles]
+      properties:
+        bundles:
+          type: array
+          items:
+            $ref: "#/components/schemas/BundleSelection"
+        defaultConflict:
+          $ref: "#/components/schemas/ConflictStrategy"
+        dryRun:
+          type: boolean
+        imageRegistryRewrite:
+          type: object
+          additionalProperties:
+            type: string
+        namespaceRemapping:
+          type: object
+          additionalProperties:
+            type: string
+        acknowledgeWarnings:
+          type: array
+          items:
+            type: string
+
+    WSEvent:
+      type: object
+      properties:
+        event:
+          type: string
+        resource:
+          type: string
+        namespace:
+          type: string
+        kind:
+          $ref: "#/components/schemas/ResourceKind"
+        status:
+          type: string
+        message:
+          type: string
+        progress:
+          $ref: "#/components/schemas/MigrationProgress"
+        timestamp:
+          type: string
+
+    PreflightCheck:
+      type: object
+      properties:
+        check:
+          type: string
+        status:
+          type: string
+          enum: [pass, warn, fail]
+        message:
+          type: string
+        bundleId:
+          type: string
+
+    VerificationResult:
+      type: object
+      properties:
+        jobId:
+          type: string
+        verified:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceResult"
+
+tags:
+  - name: System
+  - name: Configuration
+  - name: Resources
+  - name: Groups
+  - name: Bundles
+  - name: Migration
+  - name: Preflight
+  - name: Verification
