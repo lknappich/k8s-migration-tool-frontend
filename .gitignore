@@ -37,3 +37,10 @@ infra/kubeconfigs/
 coverage/
 *.test
 *.out
+
+# Internal development files
+IMPROVEMENTS.md
+KNOWN_ISSUES.md
+AGENTS.md
+CLAUDE.md
+SKILL.md
