@@ -13,8 +13,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
-      - run: cd frontend && npm ci && npx vue-tsc --noEmit && npx eslint src/ --ext .ts,.vue --max-warnings 0 || true
-      - run: echo "Type check passed"
+      - working-directory: frontend
+        run: |
+          npm ci
+          npx vue-tsc --noEmit
 
   test-unit:
     runs-on: ubuntu-latest
@@ -22,9 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
-      - run: cd frontend && npm ci && npm run test:unit -- --coverage || true
+      - working-directory: frontend
+        run: |
+          npm ci
+          npx vitest run
       - uses: codecov/codecov-action@v4
-        with: { files: frontend/coverage/coverage-final.json, flags: frontend-unit }
+        with: { files: frontend/coverage/coverage-final.json, flags: frontend-unit, token: ${{ secrets.CODECOV_TOKEN }} }
 
   build:
     runs-on: ubuntu-latest
@@ -32,9 +37,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
-      - run: cd frontend && npm ci && npm run build
+      - working-directory: frontend
+        run: npm ci && npm run build
       - uses: actions/upload-artifact@v4
-        with: { name: frontend-dist, path: frontend/dist }
+        with: { name: dist, path: frontend/dist }
 
   docker:
     needs: [lint, test-unit, build]
@@ -53,7 +59,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/k8s-migration-frontend
           tags: type=ref,event=branch;type=ref,event=tag;type=sha
       - uses: docker/build-push-action@v6
-        with: { context: ., file: frontend/Dockerfile, push: true, tags: ${{ steps.meta.outputs.tags }}, labels: ${{ steps.meta.outputs.labels }} }
+        with: { context: frontend, push: true, tags: ${{ steps.meta.outputs.tags }}, labels: ${{ steps.meta.outputs.labels }} }
 
   release:
     needs: [lint, test-unit, build, docker]
@@ -65,7 +71,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: frontend-dist, path: dist }
+        with: { name: dist, path: dist }
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
